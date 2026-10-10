@@ -195,6 +195,7 @@ form .btn:disabled{opacity:.6;cursor:wait}
 .cd span{font-size:10px;letter-spacing:.2em;text-transform:uppercase;opacity:.75}
 .cd-sep{font-family:var(--display);font-size:34px;opacity:.5;line-height:1}
 .sign{font-size:38px;line-height:1.2;margin-top:30px}
+footer small{display:block;margin-top:10px;font-family:var(--text);font-size:10px;letter-spacing:.04em;opacity:.7}
 footer{padding:26px;text-align:center;background:var(--moss);color:rgba(244,238,226,.5);font-family:var(--display);font-size:16px;letter-spacing:.3em}
 
 
@@ -229,6 +230,16 @@ footer{padding:26px;text-align:center;background:var(--moss);color:rgba(244,238,
   .finale.play .draw{stroke-dashoffset:0}
   .finale.play .ring,.finale.play .after{opacity:1}
 }
+
+/* кнопка музыки */
+.sound-btn{position:fixed;right:16px;bottom:16px;z-index:40;width:46px;height:46px;border-radius:50%;border:1px solid rgba(244,238,226,.5);
+  background:rgba(44,51,29,.82);color:var(--cream);display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(4px);box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.sound-btn svg{width:22px;height:22px}
+.sound-btn .off{display:none}
+.sound-btn.muted .off{display:inline}
+.sound-btn:not(.muted) svg{animation:beat 1.6s ease-in-out infinite}
+@keyframes beat{50%{transform:scale(1.08)}}
+.sound-btn[hidden]{display:none}
 
 /* появление при прокрутке */
 .rv{opacity:0;transform:translateY(22px);transition:opacity .9s ease,transform .9s ease}
@@ -273,6 +284,14 @@ footer{padding:26px;text-align:center;background:var(--moss);color:rgba(244,238,
   </div>
   <div class="cover-hint">Нажмите на конверт,<br>чтобы открыть приглашение</div>
 </div>
+
+<audio id="music" src="music.mp3" loop preload="metadata"></audio>
+<button type="button" class="sound-btn" id="soundBtn" aria-label="Выключить музыку" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>
+    <path class="off" d="M3 3l18 18"/>
+  </svg>
+</button>
 
 <main>
   <!-- Первый экран -->
@@ -585,7 +604,7 @@ footer{padding:26px;text-align:center;background:var(--moss);color:rgba(244,238,
       </div>
     </div>
   </section>
-  <footer>Ю &amp; Д</footer>
+  <footer>Ю &amp; Д<small>Музыка: «Canon in D Major», Kevin MacLeod (incompetech.com), CC BY 4.0</small></footer>
 </main>
 
 <script>
@@ -602,9 +621,28 @@ const MONTHS = ['январь','февраль','март','апрель','ма�
 
 /* конверт */
 const cover = document.getElementById('cover');
+const music = document.getElementById('music');
+const soundBtn = document.getElementById('soundBtn');
+let hasMusic = true;
+music.addEventListener('error', () => { hasMusic = false; soundBtn.hidden = true; });
+function startMusic(){
+  if (!hasMusic) return;
+  music.volume = 0;
+  music.play().then(() => {
+    soundBtn.hidden = false;
+    let v = 0;
+    const fade = setInterval(() => { v = Math.min(0.15, v + 0.01); music.volume = v; if (v >= 0.15) clearInterval(fade); }, 120);
+  }).catch(() => { soundBtn.hidden = false; soundBtn.classList.add('muted'); });
+}
+soundBtn.addEventListener('click', () => {
+  if (music.paused) { music.volume = 0.15; music.play(); soundBtn.classList.remove('muted'); soundBtn.setAttribute('aria-label', 'Выключить музыку'); }
+  else { music.pause(); soundBtn.classList.add('muted'); soundBtn.setAttribute('aria-label', 'Включить музыку'); }
+});
+
 function openEnvelope(){
   if (cover.classList.contains('open')) return;
   cover.classList.add('open');
+  startMusic();
   setTimeout(() => document.body.classList.remove('locked'), 900);
 }
 cover.addEventListener('click', openEnvelope);
@@ -699,7 +737,27 @@ document.getElementById('again').addEventListener('click', () => {
 
 /* финал: по нажатию на кольца — анимация, потом таймер и подпись */
 const finale = document.getElementById('finale');
+let audioCtx;
+function ding(){
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const t0 = audioCtx.currentTime + 0.9;
+    [[0, 1], [0.11, 0.7]].forEach(([dt, k]) => {
+      [[2637, .22], [3951, .1], [5274, .05], [6645, .025]].forEach(([fr, g]) => {
+        const o = audioCtx.createOscillator(), a = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = fr * (dt ? 1.012 : 1);
+        a.gain.setValueAtTime(0.0001, t0 + dt);
+        a.gain.exponentialRampToValueAtTime(g * k, t0 + dt + 0.006);
+        a.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 1.8);
+        o.connect(a).connect(audioCtx.destination);
+        o.start(t0 + dt); o.stop(t0 + dt + 1.9);
+      });
+    });
+  } catch (_) {}
+}
 function playFinale(){
+  ding();
   finale.classList.remove('play');
   void finale.offsetWidth;
   finale.classList.add('play');
